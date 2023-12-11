@@ -6,7 +6,8 @@ on:
   pull_request:
   push:
     branches: ["main"]
-    paths: /content
+    paths-ignore: 
+      - .github
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
 
