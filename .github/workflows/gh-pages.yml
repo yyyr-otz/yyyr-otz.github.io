@@ -2,10 +2,10 @@ name: github pages
 run-name: ${{ github.actor }} 正在生成pages
 
 on:
-  push:
-    branches:
-      - main  # Set a branch to deploy
-  pull_request:
+#  push:
+#    branches:
+#      - main  # Set a branch to deploy
+#  pull_request:
   workflow_dispatch:
 
 jobs:
