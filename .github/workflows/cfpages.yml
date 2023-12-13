@@ -22,4 +22,4 @@ jobs:
         run: |
           curl \
             -X POST \
-            "${{ secrets.TRIGGER_XUEKAIYUAN_PAGES_DEV }}"
+            "${{ secrets.TRIGGER_PAGES_DEV }}"
