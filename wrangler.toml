@@ -1,0 +1,8 @@
+name = "yyyr"
+main = "index.js"
+usage_model = 'bundled'
+compatibility_flags = []
+workers_dev = true
+compatibility_date = "2025-05-09"
+[site]
+bucket = "./"

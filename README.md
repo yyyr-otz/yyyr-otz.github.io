@@ -1,0 +1,1 @@
+[yyyr-otz/yyyr-hexo](https://github.com/yyyr-otz/yyyr-hexo)

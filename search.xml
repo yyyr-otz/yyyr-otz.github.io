@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="utf-8"?>
+<search>
+  <entry>
+    <title>hexo博客部署(1)——把hexo静态页面从私库推送到公开库</title>
+    <url>/hexo-deploy-1/</url>
+    <content><![CDATA[通过github私库部署hexo博客的优势&emsp;&emsp;在不影响公开访问的同时，通过github私库存储全部的博客文档，更方便的迁移工作环境
+步骤1.创建一个包含hexo源码的github私库创建私库，注意不要勾选Add a README file，否则heo初始化会报错。windows环境下需安装gitbash，npm环境配置不再赘述。把私库fork到本地后执行：
+# install hexo frameworknpm install hexo# initialize Hexo in the target &lt;folder&gt;hexo init &lt;folder&gt;cd &lt;folder&gt;npm install
+再提交到仓库
+2.创建github令牌并添加到action密钥变量创建令牌，权限至少包括：workflow和write:packages，在私库中添加action secret，暂且称之为MYPAT
+3.添加action在.github/workflow/目录下创建文件pages.yml，添加以下内容后保存即可
+name: Hexo Build &amp; Deploy - Private to Publicon:  workflow_dispatch:  push:    branches: [main]jobs:  build:    runs-on: ubuntu-latest    steps:    - name: Checkout      uses: actions/checkout@v4.2.2      with:        token: $&#123;&#123; secrets.MYPAT &#125;&#125;        submodules: &#x27;true&#x27;        persist-credentials: false    - name: Prepare Node env      uses: actions/setup-node@v4.3.0      with:        node-version: 22        cache: npm    - name: Install pandoc      run: |        cd /tmp        wget -c https://github.com/jgm/pandoc/releases/download/3.6.4/pandoc-3.6.4-1-amd64.deb        sudo dpkg -i pandoc-3.6.4-1-amd64.deb    - name: Hexo      run: |        pandoc --version        npm i -g hexo-cli        npm i        hexo clean &amp;&amp; hexo g    - name: Deploy      uses: JamesIves/github-pages-deploy-action@v4.7.3      with:        token: $&#123;&#123; secrets.MYPAT &#125;&#125;        repository-name: &lt;your-github-name&gt;/&lt;your-github-name&gt;.github.io        branch: gh-pages # The branch the action should deploy to.        folder: public # The folder the action should deploy.        single-commit: true        commit-message: &quot;Deploy by source&quot;]]></content>
+      <categories>
+        <category>hexo</category>
+      </categories>
+      <tags>
+        <tag>hexo</tag>
+        <tag>github</tag>
+        <tag>教程</tag>
+      </tags>
+  </entry>
+  <entry>
+    <title>hexo博客部署(2)——把hexo静态网页部署到不同平台</title>
+    <url>/hexo-deploy-2/</url>
+    <content><![CDATA[1.部署到github pages打开https://github.com/&lt;your-gh-name&gt;/&lt;your-gh-name&gt;.github.io/settings/pages &rArr; Source选择Deploy from a branch &rArr; Branch选择gh-pages &rArr; Folder选择/root
+2.部署到vercel点击部署新项目 &rArr; 选择&lt;your-gh-name&gt;.github.io  &rArr; 所有选项均保持为空（默认） &rArr; 项目名会生成形如&lt;项目名&gt;.vercel.app的项目域名
+3.部署到cloudflare pages创建 &rArr; Pages &rArr; Import an existing Git repository &rArr; 选择&lt;your-gh-name&gt;.github.io &rArr; 所有选项均保持为空（默认） &rArr; 项目名会生成形如&lt;项目名&gt;.pages.dev的项目域名 &rArr; 保存并部署
+4.部署到cloudflare workers4.1.cloudflare token提前准备CLOUDFLARE_ACCOUNT_ID和CLOUDFLARE_API_TOKEN并将其添加到公开库的action密钥中
+4.2.在source目录下创建文件index.js：
+import &#123; getAssetFromKV, mapRequestToAsset &#125; from &#x27;@cloudflare/kv-asset-handler&#x27;const DEBUG = falseaddEventListener(&#x27;fetch&#x27;, event =&gt; &#123;  event.respondWith(handleEvent(event))&#125;)async function handleEvent(event) &#123;  let options = &#123;&#125;  try &#123;    if (DEBUG) &#123;      options.cacheControl = &#123;        bypassCache: true,      &#125;    &#125;    const page = await getAssetFromKV(event, options)    const response = new Response(page.body, page)    response.headers.set(&#x27;X-XSS-Protection&#x27;, &#x27;1; mode=block&#x27;)    response.headers.set(&#x27;X-Content-Type-Options&#x27;, &#x27;nosniff&#x27;)    response.headers.set(&#x27;X-Frame-Options&#x27;, &#x27;DENY&#x27;)    response.headers.set(&#x27;Referrer-Policy&#x27;, &#x27;unsafe-url&#x27;)    response.headers.set(&#x27;Feature-Policy&#x27;, &#x27;none&#x27;)    return response  &#125; catch (e) &#123;    if (!DEBUG) &#123;      try &#123;        let notFoundResponse = await getAssetFromKV(event, &#123;          mapRequestToAsset: req =&gt; new Request(`$&#123;new URL(req.url).origin&#125;/404.html`, req),        &#125;)        return new Response(notFoundResponse.body, &#123; ...notFoundResponse, status: 404 &#125;)      &#125; catch (e) &#123;&#125;    &#125;    return new Response(e.message || e.toString(), &#123; status: 500 &#125;)  &#125;&#125;function handlePrefix(prefix) &#123;  return request =&gt; &#123;    let defaultAssetKey = mapRequestToAsset(request)    let url = new URL(defaultAssetKey.url)    url.pathname = url.pathname.replace(prefix, &#x27;/&#x27;)    return new Request(url.toString(), defaultAssetKey)  &#125;&#125;
+wrangler.toml：
+name = &quot;&lt;your-workers-name&gt;&quot;main = &quot;index.js&quot;usage_model = &#x27;bundled&#x27;compatibility_flags = []workers_dev = truecompatibility_date = &quot;2025-05-09&quot;[site]bucket = &quot;./&quot;
+package.json：
+&#123;  &quot;private&quot;: true,  &quot;version&quot;: &quot;1.0.0&quot;,  &quot;description&quot;: &quot;A template for kick starting a Cloudflare Workers project&quot;,  &quot;main&quot;: &quot;index.js&quot;,  &quot;license&quot;: &quot;MIT&quot;,  &quot;dependencies&quot;: &#123;    &quot;@cloudflare/kv-asset-handler&quot;: &quot;~0.1.2&quot;  &#125;&#125;
+4.3 修改_config.yml中的# Directory块skip_render: [&quot;wrangler.toml&quot;,&quot;package.json&quot;,&quot;index.js&quot;]
+4.4 添加action在公开库新建文件.github\workflows\workers.yml：
+name: Deploy to Cloudflare Workerson:  push:    branches: [ gh-pages ]jobs:  deploy:    runs-on: ubuntu-latest    steps:      - uses: actions/checkout@v4      - uses: actions/setup-node@v4        with:          node-version: &#x27;22&#x27;      - name: deploy        env:          CLOUDFLARE_API_TOKEN: $&#123;&#123; secrets.CLOUDFLARE_API_TOKEN &#125;&#125;          CLOUDFLARE_ACCOUNT_ID: $&#123;&#123; secrets.CLOUDFLARE_ACCOUNT_ID &#125;&#125;        run: |          npm i          npx wrangler@latest deploy
+4.部署到google firebase4.1.firebase authorization code#npm 环境npm install -g firebase-toolsfirebase login:ci
+打开返回的网址，登录google账号并授权，获取1//开头的token，暂且称之为FIREBASE_AUTHORIZATION_CODE，将其添加到公开库的action密钥中，继续执行打开firebase控制台，创建新项目，例如name-blog，在action密钥中添加FIREBASE_PROJECT_ID，值为name-blog
+4.2.在source目录下创建文件firebase.json：
+&#123;    &quot;hosting&quot;: &#123;        &quot;public&quot;: &quot;.&quot;,        &quot;ignore&quot;: [&quot;*.json&quot;,&quot;**/.*&quot;, &quot;**/node_modules/**&quot;]    &#125;&#125;
+4.3 修改_config.yml中的# Directory块skip_render: [&quot;wrangler.toml&quot;,&quot;package.json&quot;,&quot;index.js&quot;,&quot;firebase.json&quot;]
+4.4 添加action在公开库新建文件.github\workflows\firebase.yml：
+name: Deploy to google firebaseon:  push:    branches: [ gh-pages ]jobs:  deploy:    runs-on: ubuntu-latest    steps:      - uses: actions/checkout@v4      - uses: actions/setup-node@v4        with:          node-version: &#x27;22&#x27;      - name: deploy        env:          CLOUDFLARE_API_TOKEN: $&#123;&#123; secrets.CLOUDFLARE_API_TOKEN &#125;&#125;          CLOUDFLARE_ACCOUNT_ID: $&#123;&#123; secrets.CLOUDFLARE_ACCOUNT_ID &#125;&#125;        run: |          npm i          npx firebase-tools@14.3.1 deploy --token $&#123;&#123; secrets.FIREBASE_AUTHORIZATION_CODE &#125;&#125; --project $&#123;&#123; secrets.FIREBASE_PROJECT_ID &#125;&#125;
+在一个action中部署 github pages 、cloudflare workers 、 google firebasename: 部署到云平台on:  workflow_dispatch:  push:    branches: [ gh-pages ]permissions:  contents: read  pages: write  id-token: writejobs:  deploy:    environment:      name: github-pages      url: $&#123;&#123; steps.deployment.outputs.page_url &#125;&#125;    runs-on: ubuntu-latest    steps:      - uses: actions/checkout@v4      - uses: actions/setup-node@v4        with:          node-version: &#x27;22&#x27;          cache: &#x27;npm&#x27;      - uses: actions/configure-pages@v5      - uses: actions/upload-pages-artifact@v3        with:          path: &#x27;.&#x27;      - id: deployment        uses: actions/deploy-pages@v4      - run: npm i      - name: 🚀 部署到 cloudflare workers        env:          CLOUDFLARE_API_TOKEN: $&#123;&#123; secrets.CLOUDFLARE_API_TOKEN &#125;&#125;          CLOUDFLARE_ACCOUNT_ID: $&#123;&#123; secrets.CLOUDFLARE_ACCOUNT_ID &#125;&#125;        run: |          npx wrangler@latest deploy      - name: 🚀 部署到 google firebase hosting        env:          FIREBASE_AUTHORIZATION_CODE: $&#123;&#123; secrets.FIREBASE_AUTHORIZATION_CODE &#125;&#125;        run: |          npx firebase-tools@14.3.1 deploy --token $&#123;&#123; secrets.FIREBASE_AUTHORIZATION_CODE &#125;&#125; --project $&#123;&#123; secrets.FIREBASE_PROJECT_ID &#125;&#125;      - name: 清理工作流        uses: Mattraks/delete-workflow-runs@v2        with:          token: $&#123;&#123; secrets.MYPAT &#125;&#125;          repository: $&#123;&#123; github.repository &#125;&#125;          retain_days: 0          keep_minimum_runs: 1]]></content>
+      <categories>
+        <category>hexo</category>
+      </categories>
+      <tags>
+        <tag>hexo</tag>
+        <tag>github</tag>
+        <tag>教程</tag>
+      </tags>
+  </entry>
+</search>
